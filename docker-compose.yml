@@ -1,0 +1,44 @@
+services:
+  # 資料庫服務
+  db:
+    image: postgres:15
+    container_name: anime_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: anime_warehouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - anime-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 你的爬蟲程式
+  crawler:
+    build: .
+    container_name: anime_crawler
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 在 Docker 內部連線資料庫，主機名稱要寫 'db' 而不是 'localhost'
+      DATABASE_URL: postgresql://admin:password123@db:5432/anime_warehouse
+    networks:
+      - anime-network
+
+# 命名網路
+networks:
+  anime-network:
+    driver: bridge
+
+# 資料卷持久化設定
+volumes:
+  postgres_data:
