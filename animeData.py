@@ -8,6 +8,7 @@ import sys
 import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.dialects.postgresql import insert
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from time import sleep
@@ -124,6 +125,7 @@ logger.info(f"DataFrame 初始化完成，共 {len(df)} 筆資料")
 # 1. 優先處理編碼還原 (例如 &#039; -> ')
 df['video_title'] = df['video_title'].fillna('')  # 填充空值
 df['video_title'] = df['video_title'].apply(html.unescape)
+df['video_publication_date'] = pd.to_datetime(df['video_publication_date'], errors='coerce')
 
 # 2. 標記特徵 (不先刪除標題內容，確保提取精準)
 df['R18'] = df['video_title'].str.contains(r'\[年齡限制版\]', regex=True)
@@ -160,9 +162,36 @@ def to_sort_value(label):
 
 df['episode_sort'] = df['episode_label'].apply(to_sort_value)
 df['clean_title'] = df['clean_title'].str.replace(r'\[([^\]]+)\]$', '', regex=True).str.strip()
-logger.info(f"資料處理完成，前 5 筆:\n{df.head()}")
+logger.info(f"資料處理完成")
 
-# 7. 建立資料庫連線引擎
+# 7. 定義 Upsert 函數
+def save_to_db_upsert(df, table_name, engine):
+    """
+    實現 Upsert：如果資料已存在（loc 衝突），則更新觀看數、評分等欄位。
+    """
+    # 將 DataFrame 轉為字典清單
+    data = df.to_dict(orient='records')
+    
+    # 建立基礎 Insert 語句
+    stmt = insert(engine.dialect, table_name).values(data)
+    
+    # 定義更新邏輯：除了主鍵 (loc) 以外，其他欄位都更新為最新抓到的值
+    update_columns = {
+        col: stmt.excluded[col] 
+        for col in df.columns if col != 'loc'
+    }
+    
+    # 建立 ON CONFLICT 語句
+    upsert_stmt = stmt.on_conflict_do_update(
+        index_elements=['loc'], # 衝突判斷基準
+        set_=update_columns      # 更新內容
+    )
+    
+    with engine.begin() as conn:
+        conn.execute(upsert_stmt)
+    logger.info(f"✅ 成功完成 {len(df)} 筆資料的 Upsert 作業！")
+
+# 8. 建立資料庫連線引擎
 # 格式: postgresql://使用者:密碼@主機名稱:埠號/資料庫名稱
 # 優先讀取環境變數，如果沒有就用本地連線（方便你開發測試）
 db_url = os.getenv('DATABASE_URL', 'postgresql://admin:password123@localhost:5432/anime_warehouse')
@@ -179,12 +208,9 @@ except SQLAlchemyError as e:
     logger.error(f"資料庫連線失敗: {e}")
     sys.exit(1)
 
-# 8. 將 DataFrame 寫入資料庫
-# name: 資料表名稱
-# if_exists: 'append' 代表新增數據，'replace' 代表第一次創建時覆蓋，之後改用 append
+# 9. 使用 Upsert 將 DataFrame 寫入資料庫
 try:
-    df.to_sql('raw_anime_data', engine, if_exists='append', index=False)
-    logger.info(f"✅ 成功灌入 {len(df)} 筆資料到 PostgreSQL！")
+    save_to_db_upsert(df, 'raw_anime_data', engine)
 except SQLAlchemyError as e:
     logger.error(f"資料寫入失敗: {e}")
     sys.exit(1)

@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: password123
-      POSTGRES_DB: anime_warehouse
+      POSTGRES_DB: anime_warehouse2
     ports:
       - "5432:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
     networks:
       - anime-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d anime_warehouse"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,6 +33,12 @@ services:
       DATABASE_URL: postgresql://admin:password123@db:5432/anime_warehouse
     networks:
       - anime-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"      # 每個日誌文件最大 10MB
+        max-file: "3"        # 最多保留 3 個日誌文件
+        labels: "service=crawler"
 
 # 命名網路
 networks:
