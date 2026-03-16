@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import requests
 import xml.etree.ElementTree as ET
 import html
@@ -6,7 +7,7 @@ import re
 import os
 import sys
 import logging
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, MetaData
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.dialects.postgresql import insert
 from requests.adapters import HTTPAdapter
@@ -169,11 +170,20 @@ def save_to_db_upsert(df, table_name, engine):
     """
     實現 Upsert：如果資料已存在（loc 衝突），則更新觀看數、評分等欄位。
     """
-    # 將 DataFrame 轉為字典清單
-    data = df.to_dict(orient='records')
+    # 將 DataFrame 轉為字典清單，將所有 NaN 轉換為 None
+    data = df.replace({np.nan: None}).to_dict(orient='records')
     
-    # 建立基礎 Insert 語句
-    stmt = insert(engine.dialect, table_name).values(data)
+    if not data:
+        logger.warning("沒有資料需要寫入")
+        return
+    
+    # 使用 MetaData 反射獲取表定義
+    metadata = MetaData()
+    metadata.reflect(bind=engine)
+    tbl = metadata.tables[table_name]
+    
+    # 建立 Insert 語句
+    stmt = insert(tbl).values(data)
     
     # 定義更新邏輯：除了主鍵 (loc) 以外，其他欄位都更新為最新抓到的值
     update_columns = {

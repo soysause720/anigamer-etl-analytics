@@ -151,22 +151,20 @@ def _extract_agent(soup: BeautifulSoup) -> Optional[str]:
     """
     從 HTML 中提取代理廠商資訊。
 
-    動畫瘋頁面結構通常為：
-    <dd data-title="代理廠商">廠商名稱</dd>
+    頁面結構為：
+    <li class="type">
+        <span class="title">代理廠商</span>
+        <p class="content">Ani-One</p>
+    </li>
     """
     try:
-        # 方法 1: 尋找 data-title="代理廠商" 的標籤
-        agent_elem = soup.find('dd', {'data-title': '代理廠商'})
-        if agent_elem:
-            agent_text = agent_elem.get_text(strip=True)
-            return agent_text if agent_text else None
-
-        # 方法 2: 回退搜尋（如頁面結構變動）
-        for dd in soup.find_all('dd'):
-            if dd.find_previous('dt') and '代理廠商' in str(dd.find_previous('dt')):
-                text = dd.get_text(strip=True)
-                return text if text else None
-
+        for li in soup.find_all('li', {'class': 'type'}):
+            title_span = li.find('span', {'class': 'title'})
+            if title_span and '代理廠商' in title_span.get_text(strip=True):
+                content = li.find('p', {'class': 'content'})
+                if content:
+                    text = content.get_text(strip=True)
+                    return text if text else None
         return None
 
     except Exception as e:
@@ -178,22 +176,20 @@ def _extract_studio(soup: BeautifulSoup) -> Optional[str]:
     """
     從 HTML 中提取製作廠商資訊。
 
-    動畫瘋頁面結構通常為：
-    <dd data-title="製作廠商">廠商名稱</dd>
+    頁面結構為：
+    <li class="type">
+        <span class="title">製作廠商</span>
+        <p class="content">動畫工房</p>
+    </li>
     """
     try:
-        # 方法 1: 尋找 data-title="製作廠商" 的標籤
-        studio_elem = soup.find('dd', {'data-title': '製作廠商'})
-        if studio_elem:
-            studio_text = studio_elem.get_text(strip=True)
-            return studio_text if studio_text else None
-
-        # 方法 2: 回退搜尋
-        for dd in soup.find_all('dd'):
-            if dd.find_previous('dt') and '製作廠商' in str(dd.find_previous('dt')):
-                text = dd.get_text(strip=True)
-                return text if text else None
-
+        for li in soup.find_all('li', {'class': 'type'}):
+            title_span = li.find('span', {'class': 'title'})
+            if title_span and '製作廠商' in title_span.get_text(strip=True):
+                content = li.find('p', {'class': 'content'})
+                if content:
+                    text = content.get_text(strip=True)
+                    return text if text else None
         return None
 
     except Exception as e:
@@ -205,38 +201,26 @@ def _extract_tags(soup: BeautifulSoup) -> List[str]:
     """
     從 HTML 中提取分類標籤。
 
-    動畫瘋頁面結構通常為：
-    <dd data-title="作品分類">標籤1, 標籤2, ...</dd>
-    或
-    <ul class="tags"><li>標籤1</li><li>標籤2</li>...</ul>
+    頁面結構為：
+    <li class="type">
+        <span class="title">作品分類</span>
+        <ul class="tag-list">
+            <li class="tag">親情</li>
+            <li class="tag">偶像</li>
+            <li class="tag">職場</li>
+        </ul>
+    </li>
     """
     tags = []
 
     try:
-        # 方法 1: 尋找 data-title="作品分類"
-        tag_elem = soup.find('dd', {'data-title': '作品分類'})
-        if tag_elem:
-            tag_text = tag_elem.get_text(strip=True)
-            if tag_text:
-                # 若為逗號分隔，則拆分
-                tags = [t.strip() for t in tag_text.split('、')]
-                tags = [t for t in tags if t]
-                return tags
-
-        # 方法 2: 尋找 class="tags" 的 ul/div
-        tags_container = soup.find(['ul', 'div'], {'class': 'tags'})
-        if tags_container:
-            tag_items = tags_container.find_all(['li', 'a', 'span'])
-            tags = [item.get_text(strip=True) for item in tag_items]
-            tags = [t for t in tags if t]
-            return tags
-
-        # 方法 3: 尋找分類標籤的其他常見位置
-        for dd in soup.find_all('dd'):
-            if dd.find_previous('dt') and ('分類' in str(dd.find_previous('dt'))):
-                text = dd.get_text(strip=True)
-                if text:
-                    tags = [t.strip() for t in text.split('、')]
+        for li in soup.find_all('li', {'class': 'type'}):
+            title_span = li.find('span', {'class': 'title'})
+            if title_span and '作品分類' in title_span.get_text(strip=True):
+                tag_list = li.find('ul', {'class': 'tag-list'})
+                if tag_list:
+                    tag_items = tag_list.find_all('li', {'class': 'tag'})
+                    tags = [item.get_text(strip=True) for item in tag_items]
                     tags = [t for t in tags if t]
                     return tags
 
@@ -271,36 +255,36 @@ def save_metadata_to_db(
     # PostgreSQL 原生 INSERT ... ON CONFLICT 語句
     insert_sql = """
     INSERT INTO public.anime_metadata (url, title, agent, studio, tags, updated_at)
-    VALUES (:url, :title, :agent, :studio, :tags::JSONB, CURRENT_TIMESTAMP)
+    VALUES (:url, :title, :agent, :studio, CAST(:tags AS JSONB), CURRENT_TIMESTAMP)
     ON CONFLICT (url) DO NOTHING
     """
 
     saved_count = 0
 
     try:
-        with engine.begin() as conn:
-            for item in metadata_list:
-                try:
-                    # 單條插入，以便精準追蹤失敗的記錄
+        for item in metadata_list:
+            try:
+                # 為每條記錄單獨開啟事務，避免一個失敗導致整個事務 abort
+                with engine.begin() as conn:
                     params = {
                         'url': item['url'],
                         'title': item['title'],
                         'agent': item['agent'],
                         'studio': item['studio'],
-                        'tags': json.dumps(item['tags'], ensure_ascii=False),  # JSONB 陣列格式
+                        'tags': json.dumps(item['tags'], ensure_ascii=False),
                     }
                     conn.execute(text(insert_sql), params)
                     saved_count += 1
                     logger.debug(f"成功保存: {item['title']}")
 
-                except SQLAlchemyError as e:
-                    logger.warning(f"保存單筆記錄失敗 ({item['title']}): {e}")
-                    continue
+            except SQLAlchemyError as e:
+                logger.warning(f"保存單筆記錄失敗 ({item['title']}): {e}")
+                continue
 
         logger.info(f"✅ 成功保存 {saved_count}/{len(metadata_list)} 筆 metadata 記錄")
         return saved_count
 
-    except SQLAlchemyError as e:
+    except Exception as e:
         logger.error(f"資料庫寫入失敗: {e}")
         raise
 

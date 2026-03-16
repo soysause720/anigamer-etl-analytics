@@ -6,8 +6,8 @@ WITH VersionRepresentatives AS (
         "R18" AS is_r18, 
         MAX(video_view_count) AS version_max_view
     FROM public.raw_anime_data
-    WHERE video_type IS NULL 
-      AND video_language IS NULL
+    WHERE (video_type = 'NaN' or video_type is null) 
+      AND (video_language = 'NaN' or video_language is null)
     GROUP BY clean_title, floor(episode_sort), "R18"
 ),
 -- 2. 第二層：將「一般版最高」與「R18版最高」進行加總
@@ -30,8 +30,8 @@ CanonicalInfo AS (
         video_publication_date AS pub_date,
         video_rating AS rating
     FROM public.raw_anime_data
-    WHERE video_type IS NULL 
-      AND video_language IS NULL
+    WHERE (video_type = 'NaN' or video_type is null) 
+      AND (video_language = 'NaN' or video_language is null)
     ORDER BY clean_title, floor(episode_sort), "R18" ASC, episode_sort ASC
 )
 -- 最終合併結果 (執行時請務必連同上面的 WITH 一起選取)
