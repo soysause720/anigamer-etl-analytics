@@ -2,6 +2,7 @@ CREATE OR REPLACE VIEW public.v_clean_tv_animelist AS
 WITH EpisodeMetrics AS (
     SELECT 
         *,
+        FIRST_VALUE(url) OVER (PARTITION BY title ORDER BY episode ASC) AS first_url,
         FIRST_VALUE(view_count) OVER (PARTITION BY title ORDER BY episode ASC) AS v1
     FROM public.v_clean_tv_episodes
 )
@@ -45,6 +46,7 @@ SELECT
     END AS type,
     CASE
         WHEN CAST(MIN(pub_date) AS DATE) = CAST(MAX(pub_date) AS DATE) THEN NULL
+        WHEN (episodemetrics.title = 'Fate/strange Fake') THEN 2026
         ELSE EXTRACT(YEAR FROM (CAST(MIN(pub_date) AS DATE) + INTERVAL '14 days')) 
     END AS year,
     CASE 
@@ -57,7 +59,7 @@ SELECT
     MIN(pub_date) AS first_pub_date,
     MAX(pub_date) AS last_pub_date,
     BOOL_OR(r18) AS r18,
-    MIN(url) AS url
+    MIN(first_url) AS url
 FROM EpisodeMetrics
 GROUP BY title
 ORDER BY mean_view_count DESC;
