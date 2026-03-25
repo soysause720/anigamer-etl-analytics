@@ -1,5 +1,10 @@
 # 巴哈姆特動畫瘋 — 資料工程與機器學習分群分析
-
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Scikit-Learn](https://img.shields.io/badge/scikit--learn-%23F7931E.svg?style=flat-square&logo=scikit-learn&logoColor=white)
+![Pandas](https://img.shields.io/badge/pandas-%23150458.svg?style=flat-square&logo=pandas&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+![PowerBI](https://img.shields.io/badge/Power_BI-F2C811?style=flat-square&logo=microsoft-power-bi&logoColor=black)
 ## 目錄
 
 - [專案簡介](#專案簡介)
@@ -50,41 +55,34 @@
 
 ## 架構總覽
 
-```
-                          ┌──────────────────┐
-                          │   巴哈姆特動畫瘋   │
-                          │  ani.gamer.com.tw │
-                          └────────┬─────────┘
-                                   │
-                 ┌─────────────────┼─────────────────┐
-                 ▼                                    ▼
-      ┌─────────────────┐                 ┌─────────────────────┐
-      │  animeData.py    │                 │ anime_metadata      │
-      │  Sitemap 爬蟲    │                 │ _scraper.py         │
-      │ (觀看數/評分/時長) │                 │ (廠商/標籤)          │
-      └────────┬────────┘                 └──────────┬──────────┘
-               │              orchestrator.py         │
-               │◄────────── (流程協調/依序執行) ───────►│
-               ▼                                      ▼
-      ┌──────────────────────────────────────────────────────┐
-      │                   PostgreSQL 15                       │
-      │  ┌────────────────────────────────────────────────┐  │
-      │  │  Bronze    raw_anime_data (Upsert 原始資料)     │  │
-      │  ├────────────────────────────────────────────────┤  │
-      │  │  Silver    v_clean_tv_episodes (集數級清洗)      │  │
-      │  │            anime_metadata (代理/製作/標籤)       │  │
-      │  │            studios / studio_aliases (正規化)     │  │
-      │  │            anime_studio_map (多對多映射)         │  │
-      │  ├────────────────────────────────────────────────┤  │
-      │  │  Gold      v_clean_tv_animelist (作品級聚合)     │  │
-      │  └────────────────────────────────────────────────┘  │
-      └──────────────┬──────────────────────┬────────────────┘
-                     │                      │
-                     ▼                      ▼
-            ┌────────────────┐    ┌─────────────────┐
-            │   ML.ipynb     │    │   Power BI      │
-            │ (分群/推薦分析) │    │ (互動式儀表板)   │
-            └────────────────┘    └─────────────────┘
+```mermaid
+graph TD
+    A["🌐 巴哈姆特動畫瘋<br/>ani.gamer.com.tw"]
+
+    subgraph Crawlers ["爬蟲層"]
+        B["animeData.py<br/>(Sitemap 爬蟲)"]
+        C["anime_metadata_scraper.py<br/>(Metadata 爬蟲)"]
+    end
+
+    D["orchestrator.py<br/>(流程協調)"] --> B
+    D --> C
+    A --> B
+    A --> C
+
+    B --> E[("PostgreSQL 15")]
+    C --> E
+
+    subgraph DW ["Medallion Architecture"]
+        F["🥉 Bronze<br/>raw_anime_data"]
+        G["🥈 Silver<br/>v_clean_tv_episodes<br/>anime_metadata / studios"]
+        H["🥇 Gold<br/>v_clean_tv_animelist"]
+        F --> G --> H
+    end
+
+    E --- F
+
+    H --> I["📓 ML.ipynb<br/>PCA · t-SNE · Clustering"]
+    H --> J["📊 Power BI<br/>互動式儀表板"]
 ```
 
 ---
